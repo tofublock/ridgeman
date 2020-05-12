@@ -1,6 +1,9 @@
 # Elevation lib cache
 SRTM1/
 
+# Output images
+*.svg
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
