@@ -3,6 +3,7 @@ SRTM1/
 
 # Output images
 *.svg
+*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
