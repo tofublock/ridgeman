@@ -5,20 +5,20 @@ import gdal
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-#import elevation
 import math
 import drawSvg as draw
 import sys
 
+
 ANGLE = math.pi/4
 SUBSAMPLE = 10
-SCALE = 100
+SCALE = 120
 LINEWIDTH = 4
 STRETCH = .4
 
-filename = "eu_dem_v11_E10N20/eu_dem_v11_E10N20.TIF"
-
-ds = gdal.Open(filename)
+# Open DEM data file, read elevation data into numpy array and mask NoDataValue entries
+DEMfile = "eu_dem_v11_E10N20/eu_dem_v11_E10N20.TIF"
+ds = gdal.Open(DEMfile)
 band = ds.GetRasterBand(1)
 
 print("Reading band into array")
@@ -27,12 +27,10 @@ rasterArray = band.ReadAsArray(3200,16750,800,800, resample_alg=gdal.gdalconst.G
 print("Masking NoData entries: ", band.GetNoDataValue())
 rasterArray = np.ma.masked_values(rasterArray, band.GetNoDataValue())
 
-print("Normalising array")
 fullscale = rasterArray.max() - rasterArray.min()
 rasterArray = rasterArray / fullscale
-rasterSize = abs(ds.GetGeoTransform()[1])
+#rasterSize = abs(ds.GetGeoTransform()[1])
 
-output = np.full((int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, rasterArray.shape[1]), 1)
 d = draw.Drawing(rasterArray.shape[1], int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, displayInline=False)
 
 # Frontier for determining if pixels are blocked from view, frontier is all the way at the bottom of the screen at the start
