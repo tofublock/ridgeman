@@ -4,7 +4,8 @@ import os
 import gdal
 import numpy as np
 import matplotlib.pyplot as plt
-import elevation
+import matplotlib.image as mpimg
+#import elevation
 import math
 import drawSvg as draw
 import sys
@@ -46,33 +47,37 @@ paths = []
 for y in range(rasterArray.shape[0]-1,-1,int(SUBSAMPLE)*-1):
 	# Array of coordinates make up a path
 	segments = []
+	# Initialise new line
 	line = []
 	for x in range(0,rasterArray.shape[1]):
+		# Only look at points that are not masked
 		if rasterArray[y,x]:
+
 			# Calculate projection
-			yProjectedRaster = int( output.shape[0]-(y*STRETCH) - (rasterArray[y,x]*SCALE) )
 			yProjectedVector = int( d.height - (y*STRETCH) + (rasterArray[y,x]*SCALE) )
 
-			# Line ends behind frontier, add line to segments ### Necessary?
+			# If new coordinate lies frontier line ends here
 			if frontier[x] > yProjectedVector:
-				#print("hidden", "frontier", frontier[x], "y", y, "yProjectedVector", yProjectedVector)
+				# Only add point if it is the endpoint of a line
 				if len(line):
 					line.append([frontier[x], x])
 				segments.append(line)
 				line = []
-			# Pixel is visible, everything normal
+			# Pixel is visible, add it to the line
 			else:
-				frontier[x] = yProjectedVector #+ int(LINEWIDTH/2)
+				frontier[x] = yProjectedVector
 				line.append([yProjectedVector, x])
 
+	# Only add non-empty lines to segments
 	if len(line):
 		segments.append(line)
 		line = []
+	# Only add non-empty segments to paths
 	if len(segments):
 		paths.append(segments)
 		segments = []
 
-
+# Step through all coordinates of all segments and draw paths
 print("Plotting")
 if len(paths):
 	for p in paths:
@@ -85,4 +90,14 @@ if len(paths):
 					path.l(c[1]-s[i-1][1], c[0]-s[i-1][0])
 			d.append(path)
 
+# Save as vector graphic
 d.saveSvg('output.svg')
+
+# Draw white background, insert as first element, rasterize and save as png
+d.insert(0, draw.Rectangle(0,0,800,800, fill='white'))
+d.setPixelScale(1)
+r = d.rasterize()
+r.savePng('output.png')
+plt.imshow(mpimg.imread('output.png'))
+plt.axis('off')
+plt.show()
