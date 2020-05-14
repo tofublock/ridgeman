@@ -9,17 +9,20 @@ import matplotlib.image as mpimg
 import math
 import drawSvg as draw
 import sys
-
+import overpy
 
 ANGLE = math.pi/4
-SUBSAMPLE = 10
+SUBSAMPLE = 5
 SCALE = 120
-LINEWIDTH = 4
+LINEWIDTH = 1
 STRETCH = .4
 
 # Bounding box for image
-lat1, lon1 = 38.625287, -28.861890
-lat2, lon2 = 38.569045, -28.557980
+#lat1, lon1 = 38.625287, -28.861890
+#lat2, lon2 = 38.569045, -28.557980
+
+lat1, lon1 = 38.656994, -28.9
+lat2, lon2 = 38.52, -28.55
 
 # Transform lat lon coordinates to Copernicus projection
 transformer = Transformer.from_crs("EPSG:4326", "EPSG:3035", always_xy=True)
@@ -39,13 +42,18 @@ px2, py2 = int( (x2 - gt[0]) / gt[1] ), int( (y2 - gt[3]) / gt[5] )
 print("Reading band into array")
 rasterArray = band.ReadAsArray(px1,py1,abs(px2-px1),abs(py2-py1), resample_alg=gdal.gdalconst.GRIORA_Cubic)
 
+#plt.imshow(rasterArray)
+#plt.show()
+
 print("Masking NoData entries: ", band.GetNoDataValue())
 rasterArray = np.ma.masked_values(rasterArray, band.GetNoDataValue())
 
 fullscale = rasterArray.max() - rasterArray.min()
 rasterArray = rasterArray / fullscale
 
-d = draw.Drawing(rasterArray.shape[1], int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, displayInline=False)
+svg_dem = draw.Drawing(rasterArray.shape[1], int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, displayInline=False)
+#svg_osm = draw.Drawing(rasterArray.shape[1], int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, displayInline=False)
+svg_osm = svg_dem
 
 # Frontier for determining if pixels are blocked from view, frontier is all the way at the bottom of the screen at the start
 frontier = np.full(rasterArray.shape[1], 0)
@@ -66,10 +74,12 @@ for y in range(rasterArray.shape[0]-1,-1,int(SUBSAMPLE)*-1):
 		if rasterArray[y,x]:
 
 			# Calculate projection
-			yProjectedVector = int( d.height - (y*STRETCH) + (rasterArray[y,x]*SCALE) )
+			yProjectedVector = int( svg_dem.height - (y*STRETCH) + (rasterArray[y,x]*SCALE) )
 
 			# If new coordinate lies frontier line ends here
 			if frontier[x] > yProjectedVector:
+				# Mask this point in the rasterArray
+				#rasterArray.mask[y,x] = True
 				# Only add point if it is the endpoint of a line
 				if len(line):
 					line.append([frontier[x], x])
@@ -100,16 +110,68 @@ if len(paths):
 					path.M(c[1], c[0])
 				else:
 					path.l(c[1]-s[i-1][1], c[0]-s[i-1][0])
-			d.append(path)
+			svg_dem.append(path)
+
+
+# OSM
+opapi = overpy.Overpass()
+print("Querying OSM data")
+querystring = """(way[highway]( %f, %f, %f, %f ););(._;>;);out body;""" % (lat2, lon1, lat1, lon2)
+#querystring = """(way[highway=track]( %f, %f, %f, %f ););(._;>;);out body;""" % (lat2, lon1, lat1, lon2)
+#querystring = """(way[natural=coastline]( %f, %f, %f, %f ););(._;>;);out body;""" % (lat2, lon1, lat1, lon2)
+r = 0
+r = opapi.query(querystring)
+print("OSM query done")
+
+print("Processing OSM data")
+if not r:
+	sys.exit("OSM query failed")
+ways = r.get_ways()
+
+for w in ways:
+	path = draw.Path(stroke_width=LINEWIDTH/2, stroke='red', fill='none')
+	for i, node in enumerate(w.nodes):
+		pathlen = len(path.args["d"].split(":")[0])
+		x, y = transformer.transform(node.lon, node.lat)
+		pxi = int((x - gt[0]) / gt[1]) - px1
+		pyi = int((y - gt[3]) / gt[5]) - py1
+
+		try:
+			if True: #rasterArray[pyi, pxi]:
+				pyiProj = int( svg_osm.height - (pyi*STRETCH) + (rasterArray[pyi,pxi]*SCALE) )
+
+				if not i or not pathlen:
+					path.M(pxi, pyiProj)
+				else:
+					path.l(pxi-oldpxi, pyiProj-oldpyiProj)
+
+			else:
+#				print("Pixel blocked")
+				if pathlen:
+					svg_osm.append(path)
+					path = draw.Path(stroke_width=LINEWIDTH/2, stroke='red', fill='none')
+
+			oldpxi, oldpyiProj = pxi, pyiProj
+		except:
+			pass
+
+	svg_osm.append(path)
 
 # Save as vector graphic
-d.saveSvg('output.svg')
+svg_dem.saveSvg('dem.svg')
+svg_osm.saveSvg('osm.svg')
 
 # Draw white background, insert as first element, rasterize and save as png
-d.insert(0, draw.Rectangle(0,0,800,800, fill='white'))
-d.setPixelScale(1)
-r = d.rasterize()
-r.savePng('output.png')
-plt.imshow(mpimg.imread('output.png'))
+svg_dem.insert(0, draw.Rectangle(0,0,800,800, fill='white'))
+svg_dem.setPixelScale(1)
+r1 = svg_dem.rasterize()
+r1.savePng('dem.png')
+
+svg_osm.insert(0, draw.Rectangle(0,0,800,800, fill='white'))
+svg_osm.setPixelScale(1)
+r2 = svg_osm.rasterize()
+r2.savePng('osm.png')
+
+plt.imshow(mpimg.imread('osm.png'))
 plt.axis('off')
 plt.show()
