@@ -1,7 +1,8 @@
 #! /usr/bin/python
 
 import os
-import gdal
+from osgeo import gdal
+from pyproj import Transformer
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -16,20 +17,33 @@ SCALE = 120
 LINEWIDTH = 4
 STRETCH = .4
 
+# Bounding box for image
+lat1, lon1 = 38.625287, -28.861890
+lat2, lon2 = 38.569045, -28.557980
+
+# Transform lat lon coordinates to Copernicus projection
+transformer = Transformer.from_crs("EPSG:4326", "EPSG:3035", always_xy=True)
+x1,y1 = transformer.transform(lon1, lat1)
+x2,y2 = transformer.transform(lon2, lat2)
+
 # Open DEM data file, read elevation data into numpy array and mask NoDataValue entries
 DEMfile = "eu_dem_v11_E10N20/eu_dem_v11_E10N20.TIF"
 ds = gdal.Open(DEMfile)
+gt = ds.GetGeoTransform()
 band = ds.GetRasterBand(1)
 
+# Calculate pixel values from coordinates
+px1, py1 = int( (x1 - gt[0]) / gt[1] ), int( (y1 - gt[3]) / gt[5] )
+px2, py2 = int( (x2 - gt[0]) / gt[1] ), int( (y2 - gt[3]) / gt[5] )
+
 print("Reading band into array")
-rasterArray = band.ReadAsArray(3200,16750,800,800, resample_alg=gdal.gdalconst.GRIORA_Cubic)
+rasterArray = band.ReadAsArray(px1,py1,abs(px2-px1),abs(py2-py1), resample_alg=gdal.gdalconst.GRIORA_Cubic)
 
 print("Masking NoData entries: ", band.GetNoDataValue())
 rasterArray = np.ma.masked_values(rasterArray, band.GetNoDataValue())
 
 fullscale = rasterArray.max() - rasterArray.min()
 rasterArray = rasterArray / fullscale
-#rasterSize = abs(ds.GetGeoTransform()[1])
 
 d = draw.Drawing(rasterArray.shape[1], int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, displayInline=False)
 
