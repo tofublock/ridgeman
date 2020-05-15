@@ -6,21 +6,16 @@ from pyproj import Transformer
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-import math
 import drawSvg as draw
 import sys
 import overpy
 
-ANGLE = math.pi/4
-SUBSAMPLE = 5
+SUBSAMPLE = 10
 SCALE = 120
 LINEWIDTH = 1
 STRETCH = .4
 
 # Bounding box for image
-#lat1, lon1 = 38.625287, -28.861890
-#lat2, lon2 = 38.569045, -28.557980
-
 lat1, lon1 = 38.656994, -28.9
 lat2, lon2 = 38.52, -28.55
 
@@ -42,9 +37,6 @@ px2, py2 = int( (x2 - gt[0]) / gt[1] ), int( (y2 - gt[3]) / gt[5] )
 print("Reading band into array")
 rasterArray = band.ReadAsArray(px1,py1,abs(px2-px1),abs(py2-py1), resample_alg=gdal.gdalconst.GRIORA_Cubic)
 
-#plt.imshow(rasterArray)
-#plt.show()
-
 print("Masking NoData entries: ", band.GetNoDataValue())
 rasterArray = np.ma.masked_values(rasterArray, band.GetNoDataValue())
 
@@ -59,12 +51,10 @@ svg_osm = svg_dem
 frontier = np.full(rasterArray.shape[1], 0)
 
 print("Processing image")
-
 # Array of segments allows multiple paths per line
 paths = []
-
 # Go through image from bottom to top
-for y in range(rasterArray.shape[0]-1,-1,int(SUBSAMPLE)*-1):
+for y in range(rasterArray.shape[0]-1,-1,-1):
 	# Array of coordinates make up a path
 	segments = []
 	# Initialise new line
@@ -74,19 +64,20 @@ for y in range(rasterArray.shape[0]-1,-1,int(SUBSAMPLE)*-1):
 		if rasterArray[y,x]:
 
 			# Calculate projection
-			yProjectedVector = int( svg_dem.height - (y*STRETCH) + (rasterArray[y,x]*SCALE) )
+			yProjectedVector = svg_dem.height - (y*STRETCH) + (rasterArray[y,x]*SCALE)
 
-			# If new coordinate lies frontier line ends here
+			# If new coordinate lies behind frontier line ends here
 			if frontier[x] > yProjectedVector:
 				# Mask this point in the rasterArray
-				#rasterArray.mask[y,x] = True
-				# Only add point if it is the endpoint of a line
-				if len(line):
-					line.append([frontier[x], x])
-				segments.append(line)
-				line = []
-			# Pixel is visible, add it to the line
-			else:
+				rasterArray.mask[y,x] = True
+				# Only add point if it is on a subsampled y and is the endpoint of a line
+				if not (y % SUBSAMPLE):
+					if len(line):
+						line.append([frontier[x], x])
+					segments.append(line)
+					line = []
+			# Pixel is visible, add it to the line if it is on a subsampled y
+			elif not (y % SUBSAMPLE):
 				frontier[x] = yProjectedVector
 				line.append([yProjectedVector, x])
 
@@ -116,9 +107,9 @@ if len(paths):
 # OSM
 opapi = overpy.Overpass()
 print("Querying OSM data")
-querystring = """(way[highway]( %f, %f, %f, %f ););(._;>;);out body;""" % (lat2, lon1, lat1, lon2)
-#querystring = """(way[highway=track]( %f, %f, %f, %f ););(._;>;);out body;""" % (lat2, lon1, lat1, lon2)
-#querystring = """(way[natural=coastline]( %f, %f, %f, %f ););(._;>;);out body;""" % (lat2, lon1, lat1, lon2)
+query = "highway"
+#query = "natural=coastline"
+querystring = """(way[%s]( %f, %f, %f, %f ););(._;>;);out body;""" % (query, lat2, lon1, lat1, lon2)
 r = 0
 r = opapi.query(querystring)
 print("OSM query done")
@@ -129,16 +120,16 @@ if not r:
 ways = r.get_ways()
 
 for w in ways:
-	path = draw.Path(stroke_width=LINEWIDTH/2, stroke='red', fill='none')
-	for i, node in enumerate(w.nodes):
+	path = draw.Path(stroke_width=LINEWIDTH, stroke='red', fill='none')
+	for node in w.nodes:
 		pathlen = len(path.args["d"].split(":")[0])
 		x, y = transformer.transform(node.lon, node.lat)
-		pxi = int((x - gt[0]) / gt[1]) - px1
-		pyi = int((y - gt[3]) / gt[5]) - py1
+		pxi = int((x - gt[0]) / gt[1]) - px1 - 2
+		pyi = int((y - gt[3]) / gt[5]) - py1 - 2
 
 		try:
-			if True: #rasterArray[pyi, pxi]:
-				pyiProj = int( svg_osm.height - (pyi*STRETCH) + (rasterArray[pyi,pxi]*SCALE) )
+			if rasterArray[pyi, pxi]:
+				pyiProj = svg_osm.height - (pyi*STRETCH) + (rasterArray[pyi,pxi]*SCALE)
 
 				if not i or not pathlen:
 					path.M(pxi, pyiProj)
@@ -146,10 +137,9 @@ for w in ways:
 					path.l(pxi-oldpxi, pyiProj-oldpyiProj)
 
 			else:
-#				print("Pixel blocked")
 				if pathlen:
 					svg_osm.append(path)
-					path = draw.Path(stroke_width=LINEWIDTH/2, stroke='red', fill='none')
+					path = draw.Path(stroke_width=LINEWIDTH, stroke='red', fill='none')
 
 			oldpxi, oldpyiProj = pxi, pyiProj
 		except:
