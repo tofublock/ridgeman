@@ -9,15 +9,23 @@ import matplotlib.image as mpimg
 import drawSvg as draw
 import sys
 import overpy
+from scipy.ndimage.interpolation import rotate
 
-SUBSAMPLE = 20
-SCALE = 120
+SUBSAMPLE = 10
+SCALE = 100
 LINEWIDTH = 1
 STRETCH = .4
 
 # Bounding box for image
-lat1, lon1 = 38.66,-28.9 #37.9, -25.9 #38.66, -28.9
-lat2, lon2 = 38.52,-28.55 #37.66, -25 #38.52, -28.55
+#lat1, lon1 = 47.29 , 12.80 #Glockner
+#lat2, lon2 = 47.03 , 12.9  #Glockner
+lat1, lon1 = 38.66,-28.9 #Faial
+lat2, lon2 = 38.52,-28.55 #Faial
+#lat1, lon1 = 48.595, 16.373 #Leiser Berge
+#lat2, lon2 = 48.557, 16.459 #Leiser Berge
+#lat1, lon1 = 37.9, -25.9
+#lat2, lon2 = 37.66, -25
+
 
 # Transform lat lon coordinates to Copernicus projection
 transformer = Transformer.from_crs("EPSG:4326", "EPSG:3035", always_xy=True)
@@ -26,6 +34,7 @@ x2,y2 = transformer.transform(lon2, lat2)
 
 # Open DEM data file, read elevation data into numpy array and mask NoDataValue entries
 DEMfile = "eu_dem_v11_E10N20/eu_dem_v11_E10N20.TIF"
+#DEMfile = "eu_dem_v11_E40N20/eu_dem_v11_E40N20.TIF" #AT
 ds = gdal.Open(DEMfile)
 gt = ds.GetGeoTransform()
 band = ds.GetRasterBand(1)
@@ -40,10 +49,13 @@ rasterArray = band.ReadAsArray(px1,py1,abs(px2-px1),abs(py2-py1), resample_alg=g
 print("Masking NoData entries: ", band.GetNoDataValue())
 rasterArray = np.ma.masked_values(rasterArray, band.GetNoDataValue())
 
+#rasterArray = np.rot90(rasterArray,2)
+
 fullscale = rasterArray.max() - rasterArray.min()
 rasterArray = rasterArray / fullscale
 
-svg = draw.Drawing(rasterArray.shape[1], int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, displayInline=False)
+# Prepare SVG
+svg = draw.Drawing(rasterArray.shape[1]-1, int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, displayInline=False)
 svg.svgArgs["xmlns:inkscape"] = "http://www.inkscape.org/namespaces/inkscape"
 svg.svgArgs["xmlns:sodipodi"] = "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
 svg_dem = draw.Group()
@@ -54,7 +66,6 @@ svg_osm = draw.Group()
 svg_osm.args["inkscape:groupmode"] = "layer"
 svg_osm.args["inkscape:label"] = "1-osm"
 svg_osm.args["sodipodi:insensitive"] = "1"
-
 svg.append(svg_dem)
 svg.append(svg_osm)
 
@@ -95,6 +106,7 @@ for y in range(rasterArray.shape[0]-1,-1,-1):
 			line = []
 	if len(line):
 		segments.append(line)
+		line = []
 
 	# Only add non-empty lines to segments
 	if len(line):
@@ -135,13 +147,14 @@ if not r:
 ways = r.get_ways()
 
 for w in ways:
+	#if 'name' in w.tags and w.tags['name'] == 'Großglockner Hochalpenstraße':
 	if w.tags['highway'] == 'primary' or w.tags['highway'] == 'secondary' or w.tags['highway'] == 'tertiary':
 		path = draw.Path(stroke_width=LINEWIDTH, stroke='red', fill='none')
 		for node in w.nodes:
 			pathlen = len(path.args["d"].split(":")[0])
 			x, y = transformer.transform(node.lon, node.lat)
-			pxi = int((x - gt[0]) / gt[1]) - px1 - 2
-			pyi = int((y - gt[3]) / gt[5]) - py1 - 2
+			pxi = int( (x - gt[0]) / gt[1] ) - px1 - 2
+			pyi = int( (y - gt[3]) / gt[5] ) - py1 - 2
 
 			try:
 				if rasterArray[pyi, pxi]:
