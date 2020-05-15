@@ -16,8 +16,8 @@ LINEWIDTH = 1
 STRETCH = .4
 
 # Bounding box for image
-lat1, lon1 = 38.66, -28.9 #37.9, -26.0 #38.656994, -28.9
-lat2, lon2 = 38.52, -28.55 #37.66, -25 #38.52, -28.55
+lat1, lon1 = 38.66,-28.9 #37.9, -25.9 #38.66, -28.9
+lat2, lon2 = 38.52,-28.55 #37.66, -25 #38.52, -28.55
 
 # Transform lat lon coordinates to Copernicus projection
 transformer = Transformer.from_crs("EPSG:4326", "EPSG:3035", always_xy=True)
@@ -135,32 +135,33 @@ if not r:
 ways = r.get_ways()
 
 for w in ways:
-	path = draw.Path(stroke_width=LINEWIDTH, stroke='red', fill='none')
-	for node in w.nodes:
-		pathlen = len(path.args["d"].split(":")[0])
-		x, y = transformer.transform(node.lon, node.lat)
-		pxi = int((x - gt[0]) / gt[1]) - px1 - 2
-		pyi = int((y - gt[3]) / gt[5]) - py1 - 2
+	if w.tags['highway'] == 'primary' or w.tags['highway'] == 'secondary' or w.tags['highway'] == 'tertiary':
+		path = draw.Path(stroke_width=LINEWIDTH, stroke='red', fill='none')
+		for node in w.nodes:
+			pathlen = len(path.args["d"].split(":")[0])
+			x, y = transformer.transform(node.lon, node.lat)
+			pxi = int((x - gt[0]) / gt[1]) - px1 - 2
+			pyi = int((y - gt[3]) / gt[5]) - py1 - 2
 
-		try:
-			if rasterArray[pyi, pxi]:
-				pyiProj = svg.height - (pyi*STRETCH) + (rasterArray[pyi,pxi]*SCALE)
+			try:
+				if rasterArray[pyi, pxi]:
+					pyiProj = svg.height - (pyi*STRETCH) + (rasterArray[pyi,pxi]*SCALE)
 
-				if not i or not pathlen:
-					path.M(pxi, pyiProj)
+					if not i or not pathlen:
+						path.M(pxi, pyiProj)
+					else:
+						path.l(pxi-oldpxi, pyiProj-oldpyiProj)
+
 				else:
-					path.l(pxi-oldpxi, pyiProj-oldpyiProj)
+					if pathlen:
+						svg_osm.append(path)
+						path = draw.Path(stroke_width=LINEWIDTH, stroke='red', fill='none')
 
-			else:
-				if pathlen:
-					svg_osm.append(path)
-					path = draw.Path(stroke_width=LINEWIDTH, stroke='red', fill='none')
+				oldpxi, oldpyiProj = pxi, pyiProj
+			except:
+				pass
 
-			oldpxi, oldpyiProj = pxi, pyiProj
-		except:
-			pass
-
-	svg_osm.append(path)
+		svg_osm.append(path)
 
 print("Saving to vector file and rastering")
 # Save as vector graphic
