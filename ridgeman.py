@@ -10,14 +10,14 @@ import drawSvg as draw
 import sys
 import overpy
 
-SUBSAMPLE = 10
+SUBSAMPLE = 20
 SCALE = 120
 LINEWIDTH = 1
 STRETCH = .4
 
 # Bounding box for image
-lat1, lon1 = 38.656994, -28.9
-lat2, lon2 = 38.52, -28.55
+lat1, lon1 = 38.66, -28.9 #37.9, -26.0 #38.656994, -28.9
+lat2, lon2 = 38.52, -28.55 #37.66, -25 #38.52, -28.55
 
 # Transform lat lon coordinates to Copernicus projection
 transformer = Transformer.from_crs("EPSG:4326", "EPSG:3035", always_xy=True)
@@ -73,11 +73,10 @@ for y in range(rasterArray.shape[0]-1,-1,-1):
 	for x in range(0,rasterArray.shape[1]):
 		# Only look at points that are not masked
 		if rasterArray[y,x]:
-
 			# Calculate projection
 			yProjectedVector = svg.height - (y*STRETCH) + (rasterArray[y,x]*SCALE)
 
-			# If new coordinate lies behind frontier line ends here
+			# Line ends if new coordinate lies behind frontier and coordinates are not added
 			if frontier[x] > yProjectedVector:
 				# Mask this point in the rasterArray
 				rasterArray.mask[y,x] = True
@@ -85,12 +84,17 @@ for y in range(rasterArray.shape[0]-1,-1,-1):
 				if not (y % SUBSAMPLE):
 					if len(line):
 						line.append([frontier[x], x])
-					segments.append(line)
+						segments.append(line)
 					line = []
 			# Pixel is visible, add it to the line if it is on a subsampled y
 			elif not (y % SUBSAMPLE):
 				frontier[x] = yProjectedVector
 				line.append([yProjectedVector, x])
+		elif len(line):
+			segments.append(line)
+			line = []
+	if len(line):
+		segments.append(line)
 
 	# Only add non-empty lines to segments
 	if len(line):
