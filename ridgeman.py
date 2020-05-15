@@ -43,9 +43,20 @@ rasterArray = np.ma.masked_values(rasterArray, band.GetNoDataValue())
 fullscale = rasterArray.max() - rasterArray.min()
 rasterArray = rasterArray / fullscale
 
-svg_dem = draw.Drawing(rasterArray.shape[1], int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, displayInline=False)
-#svg_osm = draw.Drawing(rasterArray.shape[1], int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, displayInline=False)
-svg_osm = svg_dem
+svg = draw.Drawing(rasterArray.shape[1], int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, displayInline=False)
+svg.svgArgs["xmlns:inkscape"] = "http://www.inkscape.org/namespaces/inkscape"
+svg.svgArgs["xmlns:sodipodi"] = "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+svg_dem = draw.Group()
+svg_dem.args["inkscape:groupmode"] = "layer"
+svg_dem.args["inkscape:label"] = "0-dem"
+svg_dem.args["sodipodi:insensitive"] = "1"
+svg_osm = draw.Group()
+svg_osm.args["inkscape:groupmode"] = "layer"
+svg_osm.args["inkscape:label"] = "1-osm"
+svg_osm.args["sodipodi:insensitive"] = "1"
+
+svg.append(svg_dem)
+svg.append(svg_osm)
 
 # Frontier for determining if pixels are blocked from view, frontier is all the way at the bottom of the screen at the start
 frontier = np.full(rasterArray.shape[1], 0)
@@ -64,7 +75,7 @@ for y in range(rasterArray.shape[0]-1,-1,-1):
 		if rasterArray[y,x]:
 
 			# Calculate projection
-			yProjectedVector = svg_dem.height - (y*STRETCH) + (rasterArray[y,x]*SCALE)
+			yProjectedVector = svg.height - (y*STRETCH) + (rasterArray[y,x]*SCALE)
 
 			# If new coordinate lies behind frontier line ends here
 			if frontier[x] > yProjectedVector:
@@ -129,7 +140,7 @@ for w in ways:
 
 		try:
 			if rasterArray[pyi, pxi]:
-				pyiProj = svg_osm.height - (pyi*STRETCH) + (rasterArray[pyi,pxi]*SCALE)
+				pyiProj = svg.height - (pyi*STRETCH) + (rasterArray[pyi,pxi]*SCALE)
 
 				if not i or not pathlen:
 					path.M(pxi, pyiProj)
@@ -147,21 +158,24 @@ for w in ways:
 
 	svg_osm.append(path)
 
+print("Saving to vector file and rastering")
 # Save as vector graphic
-svg_dem.saveSvg('dem.svg')
-svg_osm.saveSvg('osm.svg')
+svg.saveSvg('output.svg')
 
 # Draw white background, insert as first element, rasterize and save as png
-svg_dem.insert(0, draw.Rectangle(0,0,800,800, fill='white'))
-svg_dem.setPixelScale(1)
-r1 = svg_dem.rasterize()
-r1.savePng('dem.png')
+svg = draw.Drawing(rasterArray.shape[1], int(rasterArray.shape[0]*STRETCH)+LINEWIDTH-1, displayInline=False)
+svg.insert(0, draw.Rectangle(0,0,svg.width,svg.height, fill='white'))
+for ch in svg_dem.children:
+	svg.append(ch)
+for ch in svg_osm.children:
+	svg.append(ch)
 
-svg_osm.insert(0, draw.Rectangle(0,0,800,800, fill='white'))
-svg_osm.setPixelScale(1)
-r2 = svg_osm.rasterize()
-r2.savePng('osm.png')
+# Raster image
+svg.setPixelScale(1)
+r1 = svg.rasterize()
+r1.savePng('output.png')
 
-plt.imshow(mpimg.imread('osm.png'))
+# Show raster image
+plt.imshow(mpimg.imread('output.png'))
 plt.axis('off')
 plt.show()
